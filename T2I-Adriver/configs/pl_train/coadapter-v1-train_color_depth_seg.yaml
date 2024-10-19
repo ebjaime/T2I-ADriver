@@ -1,0 +1,258 @@
+model:
+  base_learning_rate: 1e-04 # Base learning rate for training the model
+  target: adapters.coadapters.CoAdapter  # The main model class to use
+  params:
+    adapter_configs:  # Configuration for various adapter modules
+
+      #- target: ldm.modules.encoders.adapter.Adapter  # The adapter module for sketch condition
+      #  cond_name: sketch  # Name of the conditioning (sketch)
+      #  pretrained: models/t2iadapter_sketch_sd14v1.pth  # Pretrained model path for sketch adapter
+      #  params:
+      #    cin: 64  # Number of input channels for the adapter
+      #    channels: [320, 640, 1280, 1280]  # Number of channels at each resolution level
+      #    nums_rb: 2  # Number of residual blocks in the adapter
+      #    ksize: 1  # Kernel size for convolutions in the adapter
+      #    sk: True  # Whether to use selective kernel networks
+      #    use_conv: False  # Whether to use convolution operations
+
+      - target: ldm.modules.encoders.adapter.Adapter  # The adapter module for depth condition
+        cond_name: depth  # Name of the conditioning (depth)
+        pretrained: models/t2iadapter_depth_sd14v1.pth  # Pretrained model path for depth adapter
+        params:
+          cin: 192  # Number of input channels for the adapter
+          channels: [320, 640, 1280, 1280]  # Number of channels at each resolution level
+          nums_rb: 2  # Number of residual blocks in the adapter
+          ksize: 1  # Kernel size for convolutions in the adapter
+          sk: True  # Whether to use selective kernel networks
+          use_conv: False  # Whether to use convolution operations
+
+      - target: ldm.modules.encoders.adapter.Adapter_light
+        cond_name: color
+        pretrained: models/t2iadapter_color_sd14v1.pth
+        params:
+          cin: 192
+          channels: [ 320, 640, 1280, 1280 ]
+          nums_rb: 4
+
+      - target: ldm.modules.encoders.adapter.Adapter  # The adapter module for segmentation condition
+        cond_name: seg  # Name of the conditioning (segmentation)
+        pretrained: models/t2iadapter_seg_sd14v1.pth  # Pretrained model path for segmentation adapter
+        params:
+          cin: 192  # Number of input channels for the adapter
+          channels: [320, 640, 1280, 1280]  # Number of channels at each resolution level
+          nums_rb: 2  # Number of residual blocks in the adapter
+          ksize: 1  # Kernel size for convolutions in the adapter
+          sk: True  # Whether to use selective kernel networks
+          use_conv: False  # Whether to use convolution operations
+
+      # Configuration for an optional style adapter (currently commented out)
+      # - target: ldm.modules.encoders.adapter.StyleAdapter
+      #   cond_name: style
+      #   pretrained: T2I-Adapter/models/t2iadapter_style_sd14v1.pth
+      #   params:
+      #     width: 1024  # Width parameter for style adapter
+      #     context_dim: 768  # Context dimension for style adapter
+      #     num_head: 8  # Number of attention heads in the style adapter
+      #     n_layes: 3  # Number of layers in the style adapter
+      #     num_token: 8  # Number of tokens for style conditioning
+
+    coadapter_fuser_config:
+      target: ldm.modules.encoders.adapter.CoAdapterFuser  # Fuser module for combining multiple adapters
+      params:
+        unet_channels: [320, 640, 1280, 1280]  # Channels for the U-Net used in fusing adapters
+        width: 768  # Width parameter for the fuser
+        num_head: 8  # Number of attention heads in the fuser
+        n_layes: 3  # Number of layers in the fuser
+
+    noise_schedule: linear  # Type of noise schedule used in the diffusion process
+    linear_start: 0.00085  # Starting value of the linear noise schedule
+    linear_end: 0.0120  # Ending value of the linear noise schedule
+    num_timesteps_cond: 1  # Number of timesteps for conditioning
+    log_every_t: 400  # Logging frequency during training
+    timesteps: 1000  # Number of diffusion timesteps
+    first_stage_key: "jpg"  # Key for the first stage input data (e.g., image)
+    cond_stage_key: "txt"  # Key for the conditioning stage data (e.g., text)
+    image_size: 64  # Size of the generated images
+    channels: 4  # Number of channels in the output image (e.g., RGB + Alpha)
+    cond_stage_trainable: false  # Whether the conditioning stage is trainable
+    conditioning_key: crossattn  # Key for conditioning mechanism (e.g., cross-attention)
+    scale_factor: 0.18215  # Scaling factor applied to inputs
+    use_ema: False  # Whether to use Exponential Moving Average for model parameters
+    num_steps_to_save_imgs: 10000
+    
+    ucg_training:
+      txt: 0.5  # Probability for unconditional training using text
+
+    unet_config:
+      target: ldm.modules.diffusionmodules.openaimodel.UNetModel  # Target U-Net model class for diffusion
+      params:
+        image_size: 32 # unused  # Image size parameter (not used here)
+        in_channels: 4  # Number of input channels to the U-Net
+        out_channels: 4  # Number of output channels from the U-Net
+        model_channels: 320  # Base number of channels for the U-Net model
+        attention_resolutions: [4, 2, 1]  # Resolutions at which to apply attention
+        num_res_blocks: 2  # Number of residual blocks per level in the U-Net
+        channel_mult: [1, 2, 4, 4]  # Channel multiplier at each resolution level
+        num_heads: 8  # Number of attention heads in the U-Net
+        use_spatial_transformer: True  # Whether to use spatial transformer networks
+        transformer_depth: 1  # Depth of the transformer layers
+        context_dim: 768  # Dimension of the context for cross-attention
+        use_checkpoint: True  # Whether to use gradient checkpointing
+        legacy: False  # Whether to use legacy U-Net architecture
+
+    first_stage_config:
+      target: ldm.models.autoencoder.AutoencoderKL  # Autoencoder model for first stage
+      params:
+        embed_dim: 4  # Embedding dimension for the autoencoder
+        monitor: val/rec_loss  # Metric to monitor during training (validation reconstruction loss)
+        ddconfig:
+          double_z: true  # Whether to double the latent dimension (z)
+          z_channels: 4  # Number of channels in the latent space (z)
+          resolution: 256  # Resolution of the input/output images
+          in_channels: 3  # Number of input channels to the autoencoder
+          out_ch: 3  # Number of output channels from the autoencoder
+          ch: 128  # Base number of channels for the autoencoder
+          ch_mult:
+          - 1
+          - 2
+          - 4
+          - 4  # Channel multiplier at each resolution level in the autoencoder
+          num_res_blocks: 2  # Number of residual blocks per level in the autoencoder
+          attn_resolutions: []  # Resolutions at which to apply attention in the autoencoder
+          dropout: 0.0  # Dropout rate for the autoencoder
+        lossconfig:
+          target: torch.nn.Identity  # Loss function configuration (identity function)
+
+    cond_stage_config:  # Configuration for the conditional stage
+      target: ldm.modules.encoders.modules.FrozenCLIPEmbedder  # Embedding model using CLIP
+      params:
+        version: openai/clip-vit-large-patch14  # Version of the CLIP model
+
+lightning:
+  find_unused_parameters: False  # Whether to find unused parameters during training
+
+  modelcheckpoint:
+    params:
+      #every_n_train_steps: 50  # Frequency of checkpoints during training
+      every_n_epochs: 25
+      save_top_k: -1  # Number of top checkpoints to save (-1 to save all)
+      monitor: null  # Metric to monitor for saving checkpoints
+  trainer:
+    benchmark: False  # Whether to use benchmark mode for cuDNN
+    num_sanity_val_steps: 0  # Number of validation steps to run before training
+    accumulate_grad_batches: 1  # Number of batches to accumulate gradients over
+    limit_train_batches: 1000
+    limit_val_batches: 1000  # Fraction of validation batches to use
+    max_epochs: 30 # NUmber of epochs 
+    num_nodes: 1
+
+    #min_steps: 1000  # Minimum number of steps for training
+    #max_steps: 10000 # Max number of steps for training
+    
+# Declared in train.py
+    #trainer_kwargs["accelerator"] = "gpu"
+    #trainer_kwargs["devices"] = 1
+    #trainer_kwargs["gpus"] = [opt.gpu]
+    
+
+data:
+  target: ldm.data.dataset_shift_llava.ImageDataModule  # Data module for loading and processing images
+  params:
+    tar_base: T2I-Adapter/dataset/train_20  # Base directory for training dataset
+    csv_file: T2I-Adapter/dataset/train_short_prompts.csv  # CSV file containing dataset metadata
+    batch_size: 1  # Number of samples per batch. steps_per_batch = data_train_size / batch_size
+    num_workers: 8  # Number of workers for data loading
+    multinode: True  # Whether to use multiple nodes for data loading
+    train:
+      shuffle: 10000  # Number of samples to shuffle in the training set
+      image_key: jpg  # Key for accessing image data
+      image_transforms:  # List of image transformations to apply
+      - target: torchvision.transforms.Resize  # Resize transformation
+        params:
+          size: 512  # Target size for resizing
+          interpolation: 2  # Interpolation method for resizing
+      - target: torchvision.transforms.RandomCrop  # Random crop transformation
+        params:
+          size: 512  # Target size for cropping
+      process:
+        - target: ldm.data.utils.AddStyle  # Add style transformation
+          params:
+            version: openai/clip-vit-large-patch14  # Version of the CLIP model for style
+
+        # - target: ldm.data.utils.AddCannyRandomThreshold
+        #   params:
+        #     low_threshold: 40  # Lower threshold for Canny edge detection
+        #     high_threshold: 110  # Upper threshold for Canny edge detection
+        #     shift_range: 10  # Range for shifting the thresholds
+
+        - target: ldm.data.utils.AddSpatialPalette  # Add spatial palette transformation
+          params:
+            downscale_factor: 64  # Factor to downscale the spatial palette
+
+        - target: ldm.data.utils.PILtoTensor  # Convert PIL image to tensor
+    val:
+      tar_base: T2I-Adapter/dataset/val_6
+      csv_file: T2I-Adapter/dataset/val_no_prompts.csv
+      shuffle: 10000  # Number of samples to shuffle in the training set
+      image_key: jpg  # Key for accessing image data
+      image_transforms:  # List of image transformations to apply
+      - target: torchvision.transforms.Resize  # Resize transformation
+        params:
+          size: 512  # Target size for resizing
+          interpolation: 2  # Interpolation method for resizing
+      - target: torchvision.transforms.RandomCrop  # Random crop transformation
+        params:
+          size: 512  # Target size for cropping
+      process:
+        - target: ldm.data.utils.AddStyle  # Add style transformation
+          params:
+            version: openai/clip-vit-large-patch14  # Version of the CLIP model for style
+
+        # - target: ldm.data.utils.AddCannyRandomThreshold
+        #   params:
+        #     low_threshold: 40  # Lower threshold for Canny edge detection
+        #     high_threshold: 110  # Upper threshold for Canny edge detection
+        #     shift_range: 10  # Range for shifting the thresholds
+
+        - target: ldm.data.utils.AddSpatialPalette  # Add spatial palette transformation
+          params:
+            downscale_factor: 64  # Factor to downscale the spatial palette
+
+        - target: ldm.data.utils.PILtoTensor  # Convert PIL image to tensor
+
+# Alternative data module configuration (currently commented out)
+# data:
+#   target: ldm.data.dataset_laion.WebDataModuleFromConfig
+#   params:
+#     tar_base: "https://storage.googleapis.com/webdataset/fake-imagenet"  # Base URL for web dataset
+#     batch_size: 1 #2  # Number of samples per batch
+#     num_workers: 8  # Number of workers for data loading
+#     multinode: True  # Whether to use multiple nodes for data loading
+#     train:
+#       shards: "imagenet-val-{000000..000001}.tar"  # Shard pattern for the dataset
+#       shuffle: 20 #10000  # Number of samples to shuffle in the training set
+#       image_key: jpg  # Key for accessing image data
+#       image_transforms:  # List of image transformations to apply
+#       - target: torchvision.transforms.Resize  # Resize transformation
+#         params:
+#           size: 512  # Target size for resizing
+#           interpolation: 2  # Interpolation method for resizing
+#       - target: torchvision.transforms.RandomCrop  # Random crop transformation
+#         params:
+#           size: 512  # Target size for cropping
+#       process:
+#         - target: ldm.data.utils.AddStyle  # Add style transformation
+#           params:
+#             version: openai/clip-vit-large-patch14  # Version of the CLIP model for style
+
+#         # - target: ldm.data.utils.AddCannyRandomThreshold
+#         #   params:
+#         #     low_threshold: 40  # Lower threshold for Canny edge detection
+#         #     high_threshold: 110  # Upper threshold for Canny edge detection
+#         #     shift_range: 10  # Range for shifting the thresholds
+
+#         - target: ldm.data.utils.AddSpatialPalette  # Add spatial palette transformation
+#           params:
+#             downscale_factor: 64  # Factor to downscale the spatial palette
+
+#         - target: ldm.data.utils.PILtoTensor  # Convert PIL image to tensor
