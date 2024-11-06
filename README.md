@@ -100,7 +100,7 @@ Additionally, other SOTA models used for metamorphic testing can be tried out in
 
 ## Q&A
 
-For more information about the project, please take a look at the following [document](doc/2024_10_Enriquez_Thesis.pdf).
+For more information about the project, please take a look at the following [document](doc/2024_10_Enriquez_Thesis.pdf). For extra details you can take a look at the full thesis [here](https://hdl.handle.net/10589/227412).
 
 The project was carried out as a Master Thesis in _Politecnico di Milano_ for the Mathematical Engineering MSc program.
 
